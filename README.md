@@ -2,7 +2,7 @@
 
 This repository contains my final project for PM 566: Introduction to Health Data Science.
 
-Website link: https://almodaweb.github.io/PM566-FinalProject/ 
+Website link: https://almodaweb.github.io/PM566-Final-Project/
 
 Title: An Exploration of Trends in Crime Rates Across Los Angeles (2020-2024)
 
