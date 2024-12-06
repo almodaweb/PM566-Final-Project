@@ -2,6 +2,8 @@
 title: "PM 566 Final Project"
 ---
 
+
+
 # An Exploration of Trends in Crime Rates Across Los Angeles (2020-2024)
 
 ## Project Description 
@@ -13,6 +15,8 @@ Primary Questions of Interest
 [Download the report](https://github.com/almodaweb/PM566-Final-Project/blob/main/Written%20Report.pdf)
 
 ## Results
+
+
 ```{r setup, message=FALSE, echo=FALSE, warning=FALSE}
 # install packages
 library(data.table)
@@ -293,7 +297,11 @@ merged_data <- crimes %>%
 head(merged_data)
 ```
 
+
+
 ### **Figure 1. Trend of Crime Count in LA Over Time (2020-2024).**
+
+
 ```{r, echo=FALSE, warning=FALSE}
 # Summarize total crimes per month by year and calculate percent change
 crime_rate_summary <- merged_data %>%
@@ -340,9 +348,13 @@ interactive_plot1 <- ggplotly(ggplot_plot)
 # Display the interactive plot
 interactive_plot1
 ```
+
+
 *Figure 1* illustrates monthly crime trends from 2020 to September 2024, highlighting both consistent patterns and significant anomalies. From 2020 to 2023, crime levels remained relatively stable, with predictable seasonal fluctuations throughout the year. However, 2024 stands out with a sharp and sustained decline in crime beginning in April and plateauing at significantly lower levels by June. This distinct deviation from prior years suggests the influence of an external factor or intervention that effectively reduced crime rates during 2024.
 
 ### **Figure 2. Trends in Monthly Crime Rates per 100,000 Population by Region (2020-2024)**
+
+
 ```{r, echo=FALSE, warning=FALSE}
 # Load required libraries
 library(dplyr)
@@ -459,7 +471,11 @@ interactive_plots[[4]]
 interactive_plots[[5]]  
 ```
 
+
+
 ### **Figure 3. Crime Rates per 100,000 Population by Region and Crime Category.**
+
+
 ```{r, echo=FALSE, warning=FALSE}
 # Calculate Crime Rates per 100,000 Population
 crime_rate_100k <- merged_data %>%
@@ -516,4 +532,7 @@ interactive_plot <- ggplotly(ggplot_plot)
 # Display the interactive plot
 interactive_plot
 ```
+
+
 *Figure 3* shows the distribution of Property Crime, Violent Crime, and Other Crimes across four regions in Los Angeles per 100,000 population as normalized crime rates. The West Bureau stands out with the highest rate of Property Crime, exceeding 400,000, while its Violent Crime rate is also significant but slightly lower. In the South Bureau, Violent Crime is relatively high and nearly matches its Property Crime rate, emphasizing a concerning balance between these two categories. The Central Bureau displays a more even distribution among the three crime categories, with Property Crime being slightly more dominant. Meanwhile, the Valley Bureau reports the lowest overall crime rates, with Property Crime slightly exceeding Violent Crime and Other categories. Overall, the data underscores significant regional differences in crime patterns, with Property Crime being the most prevalent type across most regions.
+
