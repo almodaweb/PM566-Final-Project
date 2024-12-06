@@ -1,0 +1,17 @@
+---
+title: "About"
+---
+
+## Introduction
+Los Angeles (LA) has a complex history of crime, evolving alongside the city's growth. From organized crime in the early 20th century to gang violence and racial tensions post-World War II, LA’s crime landscape reflects the city's social, economic, and demographic changes. Central to this history is the LAPD, which has faced corruption scandals and strained community relations, leading to reforms in the 1990s aimed at improving transparency and fostering community policing.
+
+Primary Questions of Interest 
+<span style="color: #660099;"> *How have crime rates changed across different geographic areas in Los Angeles (LA) from 2020 to 2024, and what trends can be observed in terms of the age, sex, and descent of victims?* </span>
+
+## Dataset Background 
+The primary data source for this analysis is the "Crime Data from 2020 to Present" dataset from the Los Angeles Open Data Portal, maintained by the LAPD. This dataset includes comprehensive records of crime incidents in LA since 2020, available for download in CSV format. It contains 986,500 observations across 28 variables, capturing crime type, location, victim demographics, timestamps, and modus operandi. The data was imported into R for analysis to explore crime trends.
+
+Additionally, population estimates for LA neighborhoods from the Los Angeles Almanac were integrated to compare crime data against population distributions. These estimates, based on U.S. Census data, are approximations due to undefined neighborhood boundaries, offering valuable context for crime distribution analysis.
+
+## Data Exploration 
+To analyze crime trends in LA from 2020 to 2024, I summarized key variables using descriptive statistics compiled into tables for clear visualization. I addressed the primary research question by displaying the total crime count for each year from 2020 to 2024, including percent change year-over-year (Table 1). Next, I focused on the geographic distribution of crimes (Table 2). I computed the total crime count for each area, allowing me to identify regions with the highest and lowest crime counts By organizing this data by region, I could visualize how crime was concentrated in specific areas and track changes over time. Lastly, I examined victim demographics. I calculated counts given the nature of the outcome variable, observing patterns in victim age group (Table 3), descent (Table 4), and sex (Table 5) to see if certain demographic groups were disproportionately affected by crimes in LA between the years 2020 and 2024.

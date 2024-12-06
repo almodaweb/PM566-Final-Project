@@ -1,0 +1,993 @@
+---
+title: "An Exploration of Trends in Crime Rates Across Los Angeles (2020-2024)"
+author: "Hanin Almodaweb"
+format: html
+embed-resources: true
+---
+
+```{r setup, message=FALSE, echo=FALSE, warning=FALSE}
+# install packages
+library(data.table)
+library(dplyr)
+library(leaflet)
+library(tidyverse)
+library(ggplot2)
+library(viridis)
+library(RColorBrewer)
+library(knitr)
+library(lubridate)
+library(R.utils)
+library(kableExtra)
+library(forcats)
+library(stringr)
+library(rvest)
+library(sf)
+library(plotly)
+library(viridisLite)  
+```
+
+# Introduction
+
+Los Angeles (LA), a sprawling metropolis known for its diversity and global cultural influence, has a complex history of crime that has evolved alongside the city's rapid growth. From the early 20th century, when organized crime syndicates and Prohibition-era bootlegging plagued its streets, to the racially charged tensions and gang violence that emerged in the post-World War II period, LA's criminal landscape has mirrored the social, economic, and demographic changes of the city.
+
+At the center of this history is the Los Angeles Police Department (LAPD), which has faced its own challenges. The LAPD has a complex history shaped by corruption scandals, strained community relations, and efforts at reform. From the 1950s through the 1990s, LAPD leadership emphasized professional policing but often operated in isolation from democratic regulation and community relationships, particularly in marginalized areas like South LA. High-profile incidents such as the Rodney King beating in 1991 and the Rampart corruption scandal in the late 1990s exposed systemic issues within the department, prompting significant reforms aimed at fostering community policing and improving transparency by allowing the public to access real-time information. Apps such as Citizen and platforms like the USC Department of Public Safety’s Crime Alerts are key tools in this shift and have prompted this analysis. 
+
+In light of this backdrop, this analysis uses the [LAPD's Crime Data](https://data.lacity.org/Public-Safety/Crime-Data-from-2020-to-Present/2nrs-mtv8/about_data) from 2020 to the present to explore crime incidence and distribution across LA. The dataset provides a comprehensive view of reported crimes, offering insights into trends by geographic areas, crime types, and victim demographics. Additionally, neighborhood population estimates from the [Los Angeles Almanac](https://www.laalmanac.com/population/po24la.php#google_vignette) are used for contextual analysis. These estimates, while based on U.S. Census data, are not official since the Census does not account for city-defined neighborhood boundaries. Instead, the Almanac approximates populations using a widely accepted neighborhood boundary map, providing a useful but unofficial framework for understanding crime's impact on different communities. Hence, this analysis aims to shed light on how crime is evolving in the city and to better understand the distribution and impact of crime in different communities. 
+
+### Primary Questions of Interest 
+<span style="color: #660099;"> *How have crime rates changed across different geographic areas in Los Angeles (LA) from 2020 to 2024, and what trends can be observed in terms of the age, sex, and descent of victims?* </span>
+
+# Methods
+
+#### Dataset Background 
+The main source of data used for this analysis was obtained from the Los Angeles Open Data Portal, specifically the "Crime Data from 2020 to Present" dataset. This dataset is maintained by the LAPD and provides comprehensive records of crime incidents reported in the city since 2020. Accessing the data involved navigating to the Public Safety section of the Los Angeles City Data Catalog where the dataset is publicly available for download. The data was exported as a CSV file, which was subsequently imported into R for further analysis and exploration. This dataset was chosen for its breadth of information, allowing for detailed analysis of crime incidence and distribution in LA, which is pertinent to understanding public safety in the area.
+
+In this dataset, 986,500 observations (rows) of 28 variables (columns) capture details about crime incidents in the LA area. Each row represents an individual crime incident, and the variables include details such as the crime type, area name, and geographic coordinates, as well as key victim details such as age, sex, and descent. The dataset also includes timestamps and codes related to the modus operandi, which enable an in-depth analysis of crime patterns, regional concentrations, and demographic trends in the 2020-2024 timeframe under study.
+
+Additionally, population estimates for Los Angeles neighborhoods from the Los Angeles Almanac were integrated into the analysis. These estimates provide total population counts for each neighborhood, facilitating the exploration of crime trends relative to population distributions. While derived from U.S. Census data, the estimates are approximations and not official census counts, as neighborhood boundaries are not formally defined. This combined data enables a deeper understanding of crime distribution.
+
+#### Data Cleaning and Wrangling
+To clean and prepare the crime dataset for analysis, several steps were taken to ensure the data was clear, interpretable, and ready for data analysis. Upon loading the dataset, an initial exploration was performed, which involved checking the dataset's dimensions, inspecting the names and types of variables, and checking for any missing cases among the variables of interest. Next, I specified the variables of interest for further analysis, including DATE.OCC (date crime occurred), TIME.OCC (time crime occured), AREA (area code), AREA.NAME (area name), Vict.Age (age of victim), Vict.Sex (sex of victim), and Vict.Descent (descent of victim). I conducted a missing value analysis for these variables to ensure data integrity, with results presented in a summary table indicating no missing values among specified variables. 
+
+Subsequent data wrangling involved converting the DATE.OCC variable to a date-time object and extracting the year, month, and day. I defined specific crime codes for violent and property crimes, creating categorical variables to classify crime types and categorized crimes with codes that were not specified in the dataset manual as "other" to account for all crimes reported. The Vict.Age variable was re-coded to indicate no victim involved when the age was zero, leading to the creation of a new variable that distinguished between cases with and without a victim. Additionally, I re-coded the descent and sex variables into clearer categories. To group areas into broader regions, I categorized the AREA.NAME variable into specific bureaus based on [LAPD crime mapping](https://www.lapdonline.org/office-of-the-chief-of-police/office-of-special-operations/detective-bureau/crime-mapping-and-compstat/). 
+
+As part of the data wrangling process, I established age categories to enable comparisons across distinct demographic groups. However, I recognize the potential drawbacks of converting a continuous variable (age) into a categorical one. Categorization can lead to information loss by grouping nuanced data into broader bins, reducing the granularity and variability that the original data offers. That said, age categorization may still be useful for certain types of analysis or visualization, particularly when exploring trends or patterns across predefined age groups to reflect meaningful groupings relevant to the study.
+
+Throughout the cleaning process, I updated the list of variables of interest, removing any variables that were irrelevant or had excessive missing values. Additionally, partial data for 2024—reflecting reports only up to mid-October—was excluded to ensure consistency. Only data from complete months through September 2024 was retained for analysis. The final dataset included the following variables of interest: crime code, year, month, day, crime category, specific crime category, region, victim involvement, victim sex, victim descent, and victim age categories. I addressed implausible values by filtering out any entries where Victim_Age was less than 0 or greater than 99. I confirmed the categorization of crimes and other attributes, noting that the missing values primarily occurred for cases where the age was recorded as zero, indicating no victim was involved.
+
+The population dataset was extracted from the Los Angeles Almanac website and cleaned to focus on relevant neighborhoods and population totals. Key steps included retaining only "Neighborhood" and "Total Population" columns, removing duplicates, filtering for key neighborhoods, and mapping them to corresponding LAPD areas. The cleaned dataset was then merged with the crime dataset using shared geographic identifiers to enable analysis of population-adjusted crime trends.
+
+The final dataset contained 983,675 observations and 15 variables. 
+
+#### Data Exploration 
+To analyze crime trends in LA from 2020 to 2024, I summarized key variables using descriptive statistics compiled into tables for clear visualization. I addressed the primary research question by displaying the total crime count for each year from 2020 to 2024, including percent change year-over-year (Table 1). Next, I focused on the geographic distribution of crimes (Table 2). I computed the total crime count for each area, allowing me to identify regions with the highest and lowest crime counts By organizing this data by region, I could visualize how crime was concentrated in specific areas and track changes over time. Lastly, I examined victim demographics. I calculated counts given the nature of the outcome variable, observing patterns in victim age group (Table 3), descent (Table 4), and sex (Table 5) to see if certain demographic groups were disproportionately affected by crimes in LA between the years 2020 and 2024. 
+```{r, echo=FALSE}
+# Reading the dataset
+crimes <- read.csv("/Users/neens/Documents/GitHub/PM-566-Midterm/Data/Crime_Data_from_2020_to_Present_20241022.csv")
+```
+
+```{r, echo=FALSE, results = 'hide'}
+## EDA checklist
+# checking the dataset 
+dim(crimes)
+head(crimes)
+tail(crimes)
+
+# checking variable names and variable types for dataset
+str(crimes)
+
+# summary 
+summary(crimes)
+
+# specifying the preliminary variables of interest
+variables_of_interest <- c("DATE.OCC", "TIME.OCC", "AREA", "AREA.NAME", "Crm.Cd", 
+                  "Crm.Cd.Desc", "Vict.Age", "Vict.Sex", "Vict.Descent", "LAT", "LON")
+
+# check for missing values among variables of interest 
+missing_values <- sapply(crimes[variables_of_interest], function(x) sum(is.na(x)))
+
+# converting to a data frame 
+missing_values_df <- data.frame(Variable = names(missing_values), MissingValues = missing_values)
+
+# printing the results
+print(missing_values_df)
+```
+
+```{r, echo=FALSE, results = 'hide'}
+## Data Wrangling
+# Convert 'DATE.OCC' to a date-time object and extract the year, month, and day 
+crimes <- crimes %>%
+  mutate(
+    year = year(mdy_hms(DATE.OCC)),    # Extract the year
+    month = month(mdy_hms(DATE.OCC), label = TRUE, abbr = FALSE),  # Extract month as full name
+    day = day(mdy_hms(DATE.OCC))       # Extract the day of the month
+  )
+
+# Excluding partial month in 2024 (October) 
+crimes <- crimes %>%
+  filter(!(year == 2024 & month == "October"))  # Remove observations for October 2024
+
+# Define specific violent crime codes
+homicide <- c(110, 113) 
+rape <- c(121, 122, 815, 820, 821) 
+robbery <- c(210, 220)  
+aggravated_assault <- c(230, 231, 235, 236, 250, 251, 761, 926) 
+simple_assault <- c(435, 436, 437, 622, 623, 624, 625, 626, 627, 647, 763, 928, 930) 
+
+# Define specific property crime codes
+burglary <- c(310, 320)  
+motor_vehicle_theft <- c(510, 520, 433)  
+theft_from_vehicle <- c(330, 331, 410, 420, 421) 
+personal_theft <- c(350, 351, 352, 353, 450, 451, 452, 453)  
+other_theft<- c(341, 343, 345, 440, 441, 442, 443, 444, 445, 470, 471, 472, 473, 474, 475, 480, 485, 487, 491)  
+
+# Define crime categories
+violent_crimes <- c(homicide, rape, robbery, aggravated_assault, simple_assault)
+
+property_crimes <- c(burglary, motor_vehicle_theft, theft_from_vehicle, personal_theft, other_theft)
+
+# Create specific crime categories in the crimes data frame
+crimes <- crimes %>%
+  mutate(specific_crime_category = case_when(
+    Crm.Cd %in% homicide ~ "Homicide",
+    Crm.Cd %in% rape ~ "Rape",
+    Crm.Cd %in% robbery ~ "Robbery",
+    Crm.Cd %in% aggravated_assault ~ "Aggravated Assault",
+    Crm.Cd %in% simple_assault ~ "Simple Assault",
+    Crm.Cd %in% burglary ~ "Burglary",
+    Crm.Cd %in% motor_vehicle_theft ~ "Motor Vehicle Theft",
+    Crm.Cd %in% theft_from_vehicle~ "Theft from Vehicle",
+    Crm.Cd %in% personal_theft ~ "Personal Theft",
+    Crm.Cd %in% other_theft ~ "Other Theft",
+    TRUE ~ "Other"  # For any codes not classified above
+  ))
+
+# Create broader crime categories in the crimes data frame
+crimes <- crimes %>%
+  mutate(crime_category = case_when(
+    Crm.Cd %in% violent_crimes~ "Violent Crime",
+    Crm.Cd %in% property_crimes ~ "Property Crime",
+    TRUE ~ "Other"  # For any codes not classified above
+  ))
+
+# Renaming the Vict.Age variable to Victim_Age
+crimes <- crimes %>%
+  rename(Victim_Age = Vict.Age)
+
+# Creating age groups ** FIXED
+crimes <- crimes %>%
+  mutate(Age_Group = cut(Victim_Age, 
+                         breaks = seq(0, 100, by = 10), 
+                         labels = c("Children (0-9)", "Preteens (10-19)", 
+                                    "Young Adults (20-29)", "Adults (30-39)", 
+                                    "Middle-Aged Adults (40-49)", "Older Adults (50-59)", 
+                                    "Seniors (60-69)", "Elderly (70-79)", 
+                                    "Very Elderly (80-89)", "Centenarians (90-99)"),
+                         right = FALSE, 
+                         include.lowest = TRUE))
+
+# Create the new victim involvement variable
+crimes <- crimes %>%
+  mutate(victim_involvement = case_when(
+    Victim_Age == 0 ~ "No Victim Involved",
+    TRUE ~ "Victim Involved"  # For any age other than 0
+  ))
+
+# Rename and recode Vict.Sex
+crimes <- crimes %>%
+  rename(victim_sex = Vict.Sex) %>%
+  mutate(victim_sex = case_when(
+    victim_sex == "M" ~ "Male",
+    victim_sex == "F" ~ "Female",
+    victim_sex == "X" ~ "Other",
+    TRUE ~ "Unknown"  # For any unrecognized codes (no victim involved)
+  ))
+
+# Group areas into bureaus
+crimes <- crimes %>%
+  mutate(region = case_when(
+    AREA.NAME %in% c("Central", "Rampart", "Hollenbeck", "Northeast", "Newton") ~ "Central Bureau",
+    AREA.NAME %in% c("Hollywood", "Wilshire", "West LA", "Pacific", "Olympic") ~ "West Bureau",
+    AREA.NAME %in% c("Devonshire", "Foothill", "Mission", "N Hollywood", "Topanga", "Van Nuys", "West Valley") ~ "Valley Bureau",
+    AREA.NAME %in% c("77th Street", "Harbor", "Southeast", "Southwest") ~ "South Bureau",
+    TRUE ~ "Other"  # For any unrecognized areas
+  ))
+
+# Renaming the Vict.Descent variable to Victim Descent and clarifying its values
+crimes <- crimes %>%
+  rename(Victim_Descent = Vict.Descent) %>%
+  mutate(Victim_Descent = case_when(
+    Victim_Descent == "A" ~ "Other Asian",
+    Victim_Descent == "B" ~ "Black",
+    Victim_Descent == "C" ~ "Chinese",
+    Victim_Descent == "D" ~ "Cambodian",
+    Victim_Descent == "F" ~ "Filipino",
+    Victim_Descent == "G" ~ "Guamanian",
+    Victim_Descent == "H" ~ "Hispanic/Latino/Mexican",
+    Victim_Descent == "I" ~ "American Indian/Alaskan Native",
+    Victim_Descent == "J" ~ "Japanese",
+    Victim_Descent == "K" ~ "Korean",
+    Victim_Descent == "L" ~ "Laotian",
+    Victim_Descent == "O" ~ "Other",
+    Victim_Descent == "P" ~ "Pacific Islander",
+    Victim_Descent == "S" ~ "Samoan",
+    Victim_Descent == "U" ~ "Hawaiian",
+    Victim_Descent == "V" ~ "Vietnamese",
+    Victim_Descent == "W" ~ "White",
+    Victim_Descent == "X" ~ "Unknown",
+    Victim_Descent == "Z" ~ "Asian Indian",
+    TRUE ~ "Unspecified"  # For any unrecognized codes (no victim involved)
+  ))
+
+# Checking for data issues for numerical variables of interest
+summary(crimes$Victim_Age)
+summary(crimes$year)
+summary(crimes$month)
+
+# Excluding implausible ages 
+crimes <- crimes %>%
+  filter(Victim_Age >= 0 & Victim_Age <= 99)
+
+# Updated variables of interest
+variables_of_interest_updt <- c("AREA.NAME", "Crm.Cd", "year", "month", "day","crime_category", 
+                           "specific_crime_category", "victim_involvement", 
+                           "victim_sex", "Age_Group", "region", "Victim_Descent", 
+                           "Victim_Age")
+
+# Check for missing values among updated variables of interest 
+missing_values_updt <- sapply(crimes[variables_of_interest_updt], function(x) sum(is.na(x)))
+
+# Converting to a data frame 
+missing_values_updtdf <- data.frame(Variable = names(missing_values_updt), MissingValues = missing_values_updt)
+
+# Printing the results
+print(missing_values_updtdf)
+
+# Count occurrences of "No Victim Involved" ** PLOT COMPARING TO CRIMES W/ VICTIMS
+no_victim_count <- crimes %>%
+  filter(victim_involvement == "No Victim Involved") %>%
+  summarise(count = n())
+
+print(no_victim_count)
+
+# Clean dataset to keep only relevant variables
+crimes <- crimes %>%
+  select(AREA.NAME, Crm.Cd, year, month, day, crime_category, specific_crime_category, 
+         victim_involvement, victim_sex, Age_Group, region, Victim_Descent, 
+         Victim_Age)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, results="hide"}
+# Reading the population dataset
+# URL of the website
+url <- "https://www.laalmanac.com/population/po24la.php#google_vignette"
+
+# Read the HTML content of the webpage
+webpage <- read_html(url)
+
+# View the first few nodes to understand structure and confirm we have access to the table
+webpage %>% html_nodes("table") %>% html_table() %>% .[[1]]
+
+# Inspect the content of the page to understand where the table is
+webpage %>% html_nodes("table") %>% length()  
+
+population_table <- webpage %>%
+  html_nodes("table") %>%  # Look for all tables
+  .[[1]] %>%  # Choose the first table
+  html_table(fill = TRUE)  # Convert it to a data frame
+
+# Display the extracted table
+head(population_table)
+
+## Cleaning table
+# Keep only "Neighborhood" and "Total Population, All Races"
+population_table <- population_table %>%
+  select(Neighborhood, `Total Population, All Races`)
+
+# Removal of duplicates 
+population_table <- population_table %>%
+  # Remove rows where "Neighborhood" and "Total Population, All Races" are in the columns
+  filter(Neighborhood != "Neighborhood" & `Total Population, All Races` != "Total Population, All Races") %>%
+  
+  # Remove duplicate rows by keeping only the first occurrence of each neighborhood
+  distinct(Neighborhood, .keep_all = TRUE)  # Keep the first occurrence of each neighborhood
+
+# List of neighborhoods to keep
+neighborhoods_to_keep <- c("Central-Alameda", "Rampart Village", "Boyle Heights", 
+                           "Glassell Park", "Historic South Central", "Hollywood", 
+                           "Mid-City", "West LA", "Del Rey", "Pico-Union", 
+                           "Northridge", "Pacoima", "Mission Hills", "North Hollywood", 
+                           "Canoga Park", "Van Nuys", "Reseda", "Florence (LA)", 
+                           "Wilmington", "Broadway-Manchester", "Vermont Square")
+
+# Filter the table to only keep the rows with these neighborhoods
+population_table <- population_table %>%
+  filter(Neighborhood %in% neighborhoods_to_keep)
+
+# Rename the population column
+population_table <- population_table %>%
+  rename("Total population" = `Total Population, All Races`)
+
+# View the cleaned table
+head(population_table)
+
+# Create area variable
+population_table <- population_table %>%
+  mutate(area = case_when(
+    Neighborhood == "Central-Alameda" ~ "Central",
+    Neighborhood == "Rampart Village" ~ "Rampart",
+    Neighborhood == "Boyle Heights" ~ "Hollenbeck",
+    Neighborhood == "Glassell Park" ~ "Northeast",
+    Neighborhood == "Historic South Central" ~ "Newton",
+    Neighborhood == "Hollywood" ~ "Hollywood",
+    Neighborhood == "Mid-City" ~ "Wilshire",
+    Neighborhood == "West LA" ~ "West LA",
+    Neighborhood == "Del Rey" ~ "Pacific",
+    Neighborhood == "Pico-Union" ~ "Olympic",
+    Neighborhood == "Northridge" ~ "Devonshire",
+    Neighborhood == "Pacoima" ~ "Foothill",
+    Neighborhood == "Mission Hills" ~ "Mission",
+    Neighborhood == "North Hollywood" ~ "N Hollywood",
+    Neighborhood == "Canoga Park" ~ "Topanga",
+    Neighborhood == "Van Nuys" ~ "Van Nuys",
+    Neighborhood == "Reseda" ~ "West Valley",
+    Neighborhood == "Florence (LA)" ~ "77th Street",
+    Neighborhood == "Wilmington" ~ "Harbor",
+    Neighborhood == "Broadway-Manchester" ~ "Southeast",
+    Neighborhood == "Vermont Square" ~ "Southwest",
+    TRUE ~ NA_character_  # For any unmatched neighborhoods
+  ))
+
+## Merging datasets
+# Merging population_table into crimes using the area and AREA.NAME columns
+merged_data <- crimes %>%
+  left_join(population_table, by = c("AREA.NAME" = "area"))
+
+# View the merged dataset
+head(merged_data)
+```
+
+#### **Table 1(a-e). Monthly Crime Rates and Percent Changes by Year (2020–2024)**
+```{r, echo=FALSE, warning=FALSE}
+# Calculate monthly statistics per year
+monthly_stats <- merged_data %>%
+  group_by(year, month) %>%
+  summarize(count = n(), .groups = "drop")  # Count incidents per year and month
+
+# Summarize total crimes per month by year and calculate percent change
+crime_rate_summary <- merged_data %>%
+  group_by(year, month) %>%
+  summarise(total_crimes = n(), .groups = 'drop') %>%
+  arrange(year, month) %>%
+  group_by(year) %>%
+  mutate(percent_change = (total_crimes - lag(total_crimes)) / lag(total_crimes) * 100)
+
+# Rename columns for clarity
+crime_rate_summary <- crime_rate_summary %>%
+  rename("Year" = year,
+         "Month" = month,
+         "Crime Count" = total_crimes,
+         "Percent Change (%)" = percent_change)
+
+# Create tables for each year (2020-2024)
+crime_rate_2020 <- crime_rate_summary %>% filter(Year == 2020)
+crime_rate_2021 <- crime_rate_summary %>% filter(Year == 2021)
+crime_rate_2022 <- crime_rate_summary %>% filter(Year == 2022)
+crime_rate_2023 <- crime_rate_summary %>% filter(Year == 2023)
+crime_rate_2024 <- crime_rate_summary %>% filter(Year == 2024)
+
+# Display the tables without the redundant Year column
+crime_rate_2020 %>%
+  ungroup() %>%  # Ensure there are no grouping variables
+  select(-Year) %>%  # Exclude the Year column
+  kable(digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 1a: Monthly Crime Rate Summary for 2020" = 3))
+
+crime_rate_2021 %>%
+  ungroup() %>%
+  select(-Year) %>%
+  kable(digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 1b: Monthly Crime Rate Summary for 2021" = 3))
+
+crime_rate_2022 %>%
+  ungroup() %>%
+  select(-Year) %>%
+  kable(digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 1c: Monthly Crime Rate Summary for 2022" = 3))
+
+crime_rate_2023 %>%
+  ungroup() %>%
+  select(-Year) %>%
+  kable(digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 1d: Monthly Crime Rate Summary for 2023" = 3))
+
+crime_rate_2024 %>%
+  ungroup() %>%
+  select(-Year) %>%
+  kable(digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 1e: Monthly Crime Rate Summary for 2024" = 3)) %>%
+  footnote(
+    general = "Note: Data for 2024 is only complete up to September.",
+    general_title = ""
+  )
+```
+*Table 1a* summarizes monthly crime trends for 2020, showing notable fluctuations, including a sharp decline in crime counts from March (-6.35%) to April (-2.99%) followed by a rebound in May (+9.70%). *Table 1b* highlights trends for 2021, with steady increases peaking in July (+8.76%) and October (19,335 crimes), followed by slight declines toward the end of the year. *Table 1c* presents data for 2022, where March experienced the largest increase (+11.21%), peaking in May (20,462 crimes), before a marked drop in November (-7.80%). *Table 1d* outlines crime rates in 2023, characterized by relatively stable trends, with the highest count in July (19,922 crimes) and a gradual decline thereafter. Finally, *Table 1e* details 2024 trends, revealing significant reductions in crime counts from April (-20.56%) to May (-27.65%), stabilizing around 8,000 monthly crimes from June to September.
+
+#### **Table 2. Crime Summary by Region** 
+```{r, echo=FALSE, warning=FALSE}
+# Summarize total crimes and average crimes per month, grouped by region and year
+crime_rate_summary <- merged_data %>%
+  group_by(region, year) %>%
+  summarize(
+    total_crimes = n(),  # Total crimes per region
+    avg_crimes_per_month = case_when(
+      year == 2024 ~ total_crimes / 9,   # For 2024, divide by 9 months
+      year %in% 2020:2023 ~ total_crimes / 12,  # For 2020-2023, divide by 12 months
+      TRUE ~ NA_real_  # In case of any other years (which shouldn't occur)
+    ),
+    .groups = 'drop'  # Ungroup after summarizing
+  )
+
+# Now summarize by region only (to get the total for each region)
+crime_rate_summary_by_region <- crime_rate_summary %>%
+  group_by(region) %>%
+  summarize(
+    total_crimes = n(),  # Total crimes for each region
+    avg_crimes_per_month = mean(avg_crimes_per_month, na.rm = TRUE),  # Average crimes per month for each region
+    .groups = 'drop'  # Ungroup after summarizing
+  )
+
+# Create the summary table with footnote
+crime_rate_summary_by_region %>%
+  select(region, total_crimes, avg_crimes_per_month) %>%
+  kable(digits = 2, 
+        col.names = c("Region", "Total Crimes", "Average Crimes per Month")) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Crime Summary by Region" = 3)) %>%
+  footnote(
+    general = "Note: Data for 2024 is only complete up to September.",
+    threeparttable = TRUE
+  )
+```
+*Table 2* presents a regional crime summary, with the Valley Bureau recording the highest total crimes (286,724) and average crimes per month (5,114.32). The Central Bureau follows with 240,080 total crimes and an average of 4,341.03 crimes per month. The West Bureau reports 250,275 total crimes and 4,503.12 average crimes per month, while the South Bureau has the lowest totals, with 206,596 total crimes and 3,701.85 average crimes per month. 
+
+#### **Table 3. Distribution of Crimes by Victim Age Group** 
+```{r, echo=FALSE, warning=FALSE}
+# Exclude cases where victim_involvement is "No Victim Involved"
+crimes_victim <- merged_data %>%
+  filter(victim_involvement != "No Victim Involved")
+
+# Summary table for Victim Age by Age Group
+age_summary <- crimes_victim %>%
+  group_by(Age_Group) %>%
+  summarise(Number_of_Crimes = n(), .groups = 'drop') %>%
+  arrange(Age_Group) %>%
+  mutate(Percent_of_Total = (Number_of_Crimes / sum(Number_of_Crimes)) * 100) %>%  
+  rename("Age Group" = Age_Group,
+         "Crime Count" = Number_of_Crimes,
+         "Percent of Total (%)" = Percent_of_Total)
+
+# Display Number of Crimes by Age Group with Percent of Total
+age_summary_kable <- kable(age_summary, digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 3: Distribution of Crimes by Victim Age Group" = 3)) %>%
+ footnote(
+    general = "Note: Data for 2024 is only complete up to September.",
+    threeparttable = TRUE
+  )
+
+# Show the table
+age_summary_kable
+```
+*Table 3* shows the distribution of crime victims across different age groups. The largest proportion of victims falls within the young adult (20-29) and adult (30-39) age groups, with 176,438 and 191,421 crimes reported, respectively, accounting for 24.38% and 26.45% of the total.Older adults and seniors, aged 50-69, make up a significant portion, but the number of crimes decreases with age, particularly for those aged 80 and above. 
+
+#### **Table 4. Distribution of Crimes by Victim Descent** 
+```{r, echo=FALSE, warning=FALSE}
+# Summary table for Victim Descent
+descent_summary <- crimes_victim %>%
+  group_by(Victim_Descent) %>%
+  summarise(Number_of_Crimes = n(), .groups = 'drop') %>%
+  arrange(desc(Number_of_Crimes)) %>%
+  mutate(Percent_of_Total = (Number_of_Crimes / sum(Number_of_Crimes)) * 100) %>%  
+  rename("Victim Descent" = Victim_Descent,
+         "Crime Count" = Number_of_Crimes,
+         "Percent of Total (%)" = Percent_of_Total)
+
+# Display Number of Crimes by Victim Descent with Percent of Total
+descent_summary_kable <- kable(descent_summary, digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 4: Distribution of Crimes by Victim Descent" = 3)) %>%
+ footnote(
+    general = "Note: Data for 2024 is only complete up to September.",
+    threeparttable = TRUE
+  )
+
+# Show the table
+descent_summary_kable
+```
+*Table 4* shows the distribution of crimes by victim descent, with the highest number of victims identifying as Hispanic/Latino/Mexican (39.77% of total crimes), followed by White victims at 25.26% and Black victims at 18.34%. Victim groups with the smallest crime counts include Korean (0.78%), Filipino (0.63%), and Chinese (0.59%), while ethnicities such as Cambodian, Guamanian, and Laotian each represent less than 0.1%.
+
+#### **Table 5. Distribution of Crimes by Victim Sex** 
+```{r, echo=FALSE, warning=FALSE}
+# Summary table for Victim Sex
+sex_summary <- crimes_victim %>%
+  group_by(victim_sex) %>%
+  summarise(Number_of_Crimes = n(), .groups = 'drop') %>%
+  arrange(desc(Number_of_Crimes)) %>%
+  mutate(Percent_of_Total = (Number_of_Crimes / sum(Number_of_Crimes)) * 100) %>% 
+  rename("Victim Sex" = victim_sex,
+         "Crime Count" = Number_of_Crimes,
+         "Percent of Total (%)" = Percent_of_Total)
+
+# Display Number of Crimes by Victim Sex with Percent of Total
+sex_summary_kable <- kable(sex_summary, digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 5: Distribution of Crimes by Victim Sex" = 3)) %>%
+ footnote(
+    general = "Note: Data for 2024 is only complete up to September.",
+    threeparttable = TRUE
+  )
+
+# Show the table
+sex_summary_kable
+```
+*Table 5* presents the distribution of crimes by victim sex, showing that male victims account for the largest share at 50.33%, followed closely by female victims at 48.26%. The category "Other" represents 1.39% of the total, while the "Unknown" category makes up a minimal 0.02%.
+
+# Preliminary Results
+#### **Figure 1. Trend of Crime Count in LA Over Time (2020-2024).**
+```{r, echo=FALSE, warning=FALSE}
+# Summarize total crimes per month by year and calculate percent change
+crime_rate_summary <- merged_data %>%
+  group_by(year, month) %>%
+  summarise(total_crimes = n(), .groups = 'drop') %>%
+  arrange(year, month) %>%
+  group_by(year) %>%
+  mutate(percent_change = (total_crimes - lag(total_crimes)) / lag(total_crimes) * 100)
+
+# Rename columns for clarity
+crime_rate_summary <- crime_rate_summary %>%
+  rename("Year" = year,
+         "Month" = month,
+         "Crime Count" = total_crimes,
+         "Percent Change (%)" = percent_change)
+
+# Create the ggplot
+ggplot_plot <- ggplot(crime_rate_summary, aes(x = factor(Month, levels = month.name), y = `Crime Count`, color = factor(Year), group = Year)) +
+  geom_line(size = 0.5) +  
+  geom_point(size = 1.5) +  
+  scale_color_viridis_d(option = "D") +  
+  labs(
+    title = "Monthly Crime Trends by Year (2020-2024)",  # Updated title
+    subtitle = "Total crimes reported per month, with percent change",
+    x = "Month", 
+    y = "Total Crimes",
+    color = "Year",
+    caption = "Data source: Los Angeles Open Data Portal"  # Added caption for the data source
+  ) +
+  theme_minimal(base_size = 14) +  
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for clarity
+    legend.position = "bottom",  
+    plot.title = element_text(size = 12),  
+    plot.subtitle = element_text(size = 12),  
+    axis.title = element_text(size = 12),  
+    axis.text = element_text(size = 12),  
+    plot.caption = element_text(size = 10)  
+  )
+
+# Convert ggplot to interactive plot using plotly
+interactive_plot1 <- ggplotly(ggplot_plot)
+
+# Display the interactive plot
+interactive_plot1
+```
+*Figure 1* illustrates monthly crime trends from 2020 to September 2024, highlighting both consistent patterns and significant anomalies. From 2020 to 2023, crime levels remained relatively stable, with predictable seasonal fluctuations throughout the year. However, 2024 stands out with a sharp and sustained decline in crime beginning in April and plateauing at significantly lower levels by June. This distinct deviation from prior years suggests the influence of an external factor or intervention that effectively reduced crime rates during 2024.
+
+#### **Figure 2. Trends in Monthly Crime Rates per 100,000 Population by Region (2020-2024)**
+```{r, echo=FALSE, warning=FALSE}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(viridisLite)
+
+# Prepare Population Data
+crime_pop <- merged_data %>%
+  mutate(`Total population` = as.numeric(gsub(",", "", `Total population`))) %>%  # Clean and convert population column to numeric
+  distinct(region, AREA.NAME, .keep_all = TRUE) %>%  # Keep only one row per region-area combination
+  group_by(region) %>%
+  summarise(
+    total_population = sum(`Total population`, na.rm = TRUE),  # Sum population for each region
+    .groups = "drop"  # Remove grouping after summarizing
+  ) %>%
+  rename(
+    "Region" = region,
+    "Total Population" = total_population
+  )
+
+# Prepare Monthly Crime Data
+crime_monthly <- merged_data %>%
+  filter(year >= 2020 & year <= 2024) %>%  # Filter for crimes from 2020–2024
+  mutate(
+    month_year = paste(year, month, sep = "-")  # Create a combined Year-Month variable
+  ) %>%
+  group_by(region, month_year) %>%  # Group by region and month
+  summarise(
+    monthly_crimes = n(),  # Count crimes per region per month
+    .groups = "drop"  # Remove grouping after summarizing
+  ) %>%
+  rename(
+    "Region" = region,
+    "Month-Year" = month_year,
+    "Total Crimes" = monthly_crimes
+  )
+
+# Calculate Monthly Crime Rates per 100,000 Population
+crime_rate_monthly <- crime_monthly %>%
+  left_join(crime_pop, by = "Region") %>%  # Merge population data with monthly crime data
+  mutate(
+    crime_rate_per_100k = (`Total Crimes` / `Total Population`) * 100000  # Calculate monthly crime rate per 100,000
+  ) %>%
+  arrange(Region, `Month-Year`)  # Optional: Sort by region and month-year
+
+# Prepare the data by extracting month and year from the 'Month-Year' column
+crime_rate_monthly <- crime_rate_monthly %>%
+  mutate(
+    Year = sub("-.*", "", `Month-Year`),  # Extract year
+    Month = match(sub(".*-", "", `Month-Year`), month.name)  # Convert month name to numeric (1 for Jan, 12 for Dec)
+  ) %>%
+  arrange(Year, Month)  # Ensure the data is ordered by Year and Month
+
+# Create an interactive line plot for each year
+create_interactive_line_plot <- function(year_data, year) {
+  p <- plot_ly(
+    data = year_data,
+    x = ~Month,  # Use Month as x-axis (1, 2, ..., 12)
+    y = ~crime_rate_per_100k,
+    color = ~Region,  # Color by region
+    colors = viridisLite::viridis(length(unique(year_data$Region)), option = "D"),  # Apply viridis color scale
+    type = "scatter",
+    mode = "lines+markers",  # Line graph with markers at each data point
+    hoverinfo = "text",
+    text = ~paste(
+      "Region:", Region,
+      "<br>Month:", month.name[Month],  # Show month name in hover text
+      "<br>Crime Rate per 100k:", round(crime_rate_per_100k, 2)
+    )
+  ) %>%
+    layout(
+      title = paste("Monthly Crime Rates per 100,000 Population by Region in", year),
+      xaxis = list(
+        title = "Month",
+        tickvals = 1:12,  # Show months from 1 to 12
+        ticktext = month.name,  # Label months as Jan, Feb, Mar, ..., Dec
+        tickangle = 45  # Rotate labels for better visibility
+      ),
+      yaxis = list(
+        title = "Crime Rate per 100,000",
+        showgrid = TRUE,
+        zeroline = FALSE  # Remove the zero line for better visual clarity
+      ),
+      legend = list(
+        title = list(text = "Region"),
+        x = 0.85,  # Position the legend at the right
+        y = 0.95   # Position the legend at the top
+      ),
+      plot_bgcolor = "white",  # Set background color to white
+      paper_bgcolor = "white", # Set paper color to white for a cleaner look
+      margin = list(l = 40, r = 40, t = 50, b = 40)  # Adjust margins for clean presentation
+    )
+  
+  # Convert the plotly object into an interactive plot and display it
+  p
+}
+
+# Create and display interactive plots for each year (2020 to 2024)
+interactive_plots <- list()
+
+# Loop through each year (2020-2024) and create interactive line plots
+for (year in 2020:2024) {
+  year_data <- crime_rate_monthly %>% filter(Year == as.character(year))
+  
+  interactive_plots[[as.character(year)]] <- create_interactive_line_plot(year_data, year)
+}
+
+# Display the plots
+interactive_plots[[1]]  
+interactive_plots[[2]]  
+interactive_plots[[3]]  
+interactive_plots[[4]]  
+interactive_plots[[5]]  
+```
+*Figure 2* highlights the monthly crime trends across four regions in Los Angeles from 2020 to 2024. In 2020, crime rates generally decline until mid-year before stabilizing, with the Valley Bureau consistently reporting the lowest rates. In 2021, crime rates show a more pronounced increase in the latter half of the year, particularly in the Central and West Bureaus, while the Valley Bureau maintains lower rates. As for 2022, the Central Bureau consistently had the highest rates, peaking around mid-year at 2,747 per 100,000 population. The South Bureau West Bureau followed similar trends, with moderate fluctuations but lower rates than the Central Bureau. The Valley Bureau had the lowest crime rates throughout the year, maintaining a steady trend with minimal changes. In 2023 Central Bureau remained the region with the highest crime rates, although its peaks were slightly lower than in 2022. The South Bureau West Bureau exhibited moderate increases during the middle of the year, followed by gradual declines. The Valley Bureau continued its stable pattern with the lowest rates and minimal variability compared to other regions. Finally, in 2024, Central Bureau West Bureau experienced sharp declines after March, dropping to a low of 933 per 100,000 population in the West Bureau and 1,078 per 100,000 populaton in Central Bureau. South Bureau also saw a steady decrease, though at a slower pace. The Valley Bureau again maintained the lowest and most stable crime rates, showcasing consistency. This figure highlights an overall downward trend in crime rates towards September, particularly in areas with previously higher rates.
+
+#### **Figure 3. Monthly Crime Counts by Year and Crime Category (2020–2024)**
+```{r, echo=FALSE, warning=FALSE}
+# Summarize total crimes by year, month, and crime category
+crime_counts_monthly <- crimes %>%
+  group_by(year, month, crime_category) %>%
+  summarise(total_crimes = n(), .groups = 'drop')
+
+# Adjust the data for 2024 to include only months up to September
+crime_counts_monthly <- crime_counts_monthly %>%
+  mutate(month_num = match(month, month.name)) %>%  # Convert month names to numeric
+  filter(!(year == 2024 & month_num > 9))  # Keep only data up to September for 2024
+
+# Function to create an interactive plot for each year
+create_interactive_plot <- function(year_data, year) {
+  p <- ggplot(year_data, aes(x = factor(month, levels = month.name), y = total_crimes, fill = crime_category)) +
+    geom_bar(stat = "identity", position = "stack") +  # Stack the bars
+    scale_fill_viridis_d(option = "D") +
+    labs(
+      title = paste("Monthly Crime Count in", year, "by Crime Category"),
+      x = "Month",
+      y = "Total Crimes",
+      fill = "Crime Category"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+      legend.position = "bottom"  # Move the legend to the bottom
+    ) +
+    scale_y_continuous(labels = scales::comma)  # Format y-axis labels with commas
+  
+  # Convert ggplot to an interactive Plotly plot
+  ggplotly(p)
+}
+
+# Create and display interactive plots for each year (2020 to 2024)
+interactive_plots <- list()
+
+# Loop through each year (2020-2024) and create interactive plots
+for (year in 2020:2024) {
+  year_data <- crime_counts_monthly %>% filter(year == year)
+  
+  # If it's the year 2024, only keep data up until September
+  if (year == 2024) {
+    year_data <- year_data %>% filter(month_num <= 9)
+  }
+  
+  interactive_plots[[as.character(year)]] <- create_interactive_plot(year_data, year)
+}
+
+# Display the plots
+interactive_plots[[1]]  
+interactive_plots[[2]]  
+interactive_plots[[3]]  
+interactive_plots[[4]]  
+interactive_plots[[5]]  
+```
+*Figure 3* illustrates the distribution of total crimes in Los Angeles across three categories—Other, Property Crime, and Violent Crime—from 2020 to September 2024. Property crimes consistently reported the highest numbers across all years, peaking in December 2023 at 9,696 incidents. Violent crimes showed moderate fluctuations, with notable increases in mid-2022, reaching a peak of 6,165 in May, before steadily declining to extremely low levels by mid-2024, such as only 188 in June. "Other" crimes remained relatively stable, with some seasonal variations, but also experienced a significant decline by mid-2024. A clear downward trend in overall crime rates is evident starting in 2024, with property and violent crimes sharply dropping, especially violent crime, which fell dramatically to less than 200 incidents per month in the second half of 2024. This suggests an improvement in crime control measures or societal changes during this period.
+
+#### **Figure 4. Crime Rates per 100,000 Population by Region and Crime Category.**
+```{r, echo=FALSE, warning=FALSE}
+# Calculate Crime Rates per 100,000 Population
+crime_rate_100k <- merged_data %>%
+  mutate(
+    `Total population` = as.numeric(gsub(",", "", `Total population`))  # Clean and convert population column to numeric
+  ) %>%
+  group_by(region) %>%  # Group by region to calculate total crimes for each region
+  mutate(
+    total_crimes = n(),  # Count total crimes per region
+    crime_rate_per_100k = (total_crimes / `Total population`) * 100000  # Calculate crime rate per 100,000
+  ) %>%
+  ungroup() %>%  # Ungroup after calculations
+  arrange(region) 
+
+# Create the interactive plot for crime rates per 100k by crime category and region
+library(plotly)
+library(dplyr)
+
+# Create a grouped dataset by region and crime_category
+crime_rate_grouped <- crime_rate_100k %>%
+  group_by(region, crime_category) %>%
+  summarise(
+    total_crimes = n(),  # Calculate total crimes for each crime_category and region
+    `Total population` = first(`Total population`),  # Use the population of the region
+    crime_rate_per_100k = (total_crimes / `Total population`) * 100000,  # Calculate crime rate
+    .groups = "drop"
+  )
+
+# Create a ggplot object for interactive visualization
+ggplot_plot <- ggplot(crime_rate_grouped, aes(x = region, y = crime_rate_per_100k, fill = crime_category)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +  # Use dodge for separate bars by crime_category
+  labs(
+    title = "Crime Rate per 100,000 by Region and Crime Category",
+    subtitle = "Comparison of crime rates across different regions and categories",
+    x = "Region",
+    y = "Crime Rate per 100,000",
+    fill = "Crime Category"
+  ) +
+  scale_fill_viridis_d(option = "D") + 
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for clarity
+    legend.position = "bottom",  # Place legend at the bottom
+    plot.title = element_text(size = 12), 
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  ) +
+  scale_y_continuous(labels = scales::comma)  # Format y-axis labels
+
+# Convert the ggplot object to an interactive Plotly object
+interactive_plot <- ggplotly(ggplot_plot)
+
+# Display the interactive plot
+interactive_plot
+```
+*Figure 4* shows the distribution of Property Crime, Violent Crime, and Other Crimes across four regions in Los Angeles per 100,000 population as normalized crime rates. The West Bureau stands out with the highest rate of Property Crime, exceeding 400,000, while its Violent Crime rate is also significant but slightly lower. In the South Bureau, Violent Crime is relatively high and nearly matches its Property Crime rate, emphasizing a concerning balance between these two categories. The Central Bureau displays a more even distribution among the three crime categories, with Property Crime being slightly more dominant. Meanwhile, the Valley Bureau reports the lowest overall crime rates, with Property Crime slightly exceeding Violent Crime and Other categories. Overall, the data underscores significant regional differences in crime patterns, with Property Crime being the most prevalent type across most regions.
+
+#### **Table 6. Crime Counts by Area in Valley Bureau (2020-2024).** 
+```{r, echo=FALSE, warning=FALSE}
+# Filter for Valley Bureau region and summarize counts by AREA.NAME
+valley_bureau_counts <- crimes %>%
+  filter(region == "Valley Bureau") %>%
+  group_by(AREA.NAME) %>%
+  summarise(Number_of_Crimes = n(), .groups = 'drop') %>%
+  arrange(desc(Number_of_Crimes))  # Sort by number of crimes
+
+# Rename columns for clarity
+valley_bureau_counts <- valley_bureau_counts %>%
+  rename("Area Name" = AREA.NAME, "Crime Count" = Number_of_Crimes)
+
+# Display the table using kable
+valley_bureau_counts_kable <- kable(valley_bureau_counts, 
+                                     digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 6: Crime Counts by Area in Valley Bureau (2020-2024)" = 2))  %>%
+ footnote(
+    general = "Note: Data for 2024 is only complete up to September.",
+    threeparttable = TRUE
+  )
+
+# Show the table
+valley_bureau_counts_kable
+```
+Given the highest total crime count is in the valley bureau, *Table 6* presents area-specific crime counts within the bureau. This table shows that North Hollywood has the highest raw crime count (50,036), followed by Van Nuys (41,931) and West Valley (41,351). Other areas, such as Devonshire (40,874), Topanga (40,487), Mission (39,466), and Foothill (32,579), also contribute significantly to the overall crime in the region.
+
+#### **Table 7. Summary Table of Violent Crime Count Over the Years (2020-2024).** 
+```{r, echo=FALSE, warning=FALSE}
+# Summarize crime counts by year and specific crime category for violent crimes
+violent_crime_summary <- crimes %>%
+  filter(specific_crime_category %in% c("Homicide", "Rape", "Robbery", 
+                                         "Aggravated Assault", "Simple Assault")) %>%
+  group_by(year, specific_crime_category) %>%
+  summarise(Number_of_Crimes = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = year, values_from = Number_of_Crimes, 
+              values_fill = 0, names_prefix = "Year_") %>%
+  mutate(Percent_Change = (Year_2024 - Year_2020) / Year_2020 * 100) %>%
+  arrange(specific_crime_category)
+
+# Rename columns for clarity
+violent_crime_summary <- violent_crime_summary %>%
+  rename("Specific Crime Category" = specific_crime_category, 
+         "2020" = Year_2020, 
+         "2021" = Year_2021, 
+         "2022" = Year_2022, 
+         "2023" = Year_2023, 
+         "2024" = Year_2024, 
+         "Percent Change (%)" = Percent_Change)
+
+# Create kable summary table for violent crimes
+violent_crime_summary_kable <- knitr::kable(violent_crime_summary, 
+                                             digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 7: Summary of Violent Crimes with Percent Change (2020-2024)" = 7)) %>%
+  footnote(
+    general = "Note: Percent change for 2024 only accounts for data until September.",
+    threeparttable = TRUE
+  )
+
+# Display the table
+violent_crime_summary_kable
+```
+*Table 7* summarizes violent crimes from 2020 to 2024, showing a substantial decline across all categories, with data for 2024 reflecting figures through September. Aggravated Assault decreased by 70.14%, and Homicides saw the steepest drop of 73.88%. Similarly, Rape incidents declined by 79.41%, the largest percentage reduction among all categories. Robbery cases decreased by 66.32%, while Simple Assaults fell by 69.70%. These trends indicate a significant reduction in violent crime over the five-year period, with 2024 showing markedly lower numbers compared to prior years.
+
+#### **Table 8. Summary Table of Property Crime Count Over the Years (2020-2024).** 
+```{r, echo=FALSE, warning=FALSE}
+# Summarize crime counts by year and specific crime category for property crimes
+property_crime_summary <- crimes %>%
+  filter(specific_crime_category %in% c("Burglary", "Motor Vehicle Theft", 
+                                         "Theft from Vehicle", "Personal Theft", 
+                                         "Other Theft")) %>%
+  group_by(year, specific_crime_category) %>%
+  summarise(Number_of_Crimes = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = year, values_from = Number_of_Crimes, 
+              values_fill = 0, names_prefix = "Year_") %>%
+  arrange(specific_crime_category)
+
+# Check if Year_2020 and Year_2024 exist before calculating Percent_Change
+if ("Year_2020" %in% colnames(property_crime_summary) && "Year_2024" %in% colnames(property_crime_summary)) {
+  property_crime_summary <- property_crime_summary %>%
+    mutate(Percent_Change = (Year_2024 - Year_2020) / Year_2020 * 100)
+} else {
+  warning("Year_2020 or Year_2024 columns are missing in property_crime_summary.")
+}
+
+# Rename columns for clarity
+property_crime_summary <- property_crime_summary %>%
+  rename("Specific Crime Category" = specific_crime_category, 
+         "2020" = Year_2020, 
+         "2021" = Year_2021, 
+         "2022" = Year_2022, 
+         "2023" = Year_2023, 
+         "2024" = Year_2024, 
+         "Percent Change (%)" = Percent_Change)
+
+# Create kable summary table for property crimes
+property_crime_table_kable <- knitr::kable(property_crime_summary, digits = 2) %>%
+  kable_styling(full_width = FALSE) %>%
+  add_header_above(c("Table 8: Summary of Property Crimes with Percent Change (2020-2024)" = 7)) %>%
+  footnote(
+    general = "Note: Percent change for 2024 only accounts for data until September.",
+    threeparttable = TRUE
+  )
+
+# Display the table
+property_crime_table_kable
+```
+*Table 8* shows a notable decline in several categories of property crime from 2020 to 2024, with 2024 data reflecting figures through September. Burglary experienced the most significant decline, dropping 66.31%, while Motor Vehicle Theft decreased by a modest 16.41%. Other Theft saw a smaller reduction of 10.71%, and Theft from Vehicle declined by 35.43%. Notably, Personal Theft increased by 12.90%, marking the only category to show growth during this period. Overall, while most property crime categories have decreased, the trends suggest differing rates of reduction across specific types of crime.
+
+#### **Figure 5. Monthly Crime Trends by Victim Involvement in Los Angeles (2020-2024)**
+```{r, echo=FALSE, warning=FALSE}
+library(ggplot2)
+
+# Aggregate the data for victimless vs other crimes by year and month
+crime_trends <- merged_data %>%
+  group_by(year, month, victim_involvement) %>%
+  summarise(total_crimes = n(), .groups = 'drop')
+
+# Ensure month is treated as a factor with correct ordering
+crime_trends$month <- factor(crime_trends$month, 
+                             levels = c("January", "February", "March", "April", "May", "June", 
+                                        "July", "August", "September", "October", "November", "December"))
+
+# Create a ggplot
+ggplot(crime_trends, aes(x = month, y = total_crimes, color = victim_involvement, group = victim_involvement)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~year) +
+  labs(
+    title = "Monthly Trends in Victimless vs Victim Involved Crimes by Year",
+    x = "Month",
+    y = "Total Crimes",
+    color = "Victim Involvement"
+  ) +
+  scale_color_viridis_d(option = "D") + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1), # Rotate month labels for readability
+    panel.grid.major.x = element_blank(), # Remove vertical grid lines
+    panel.grid.minor = element_blank()
+  )
+```
+*Figure 5* displays monthly trends in victimless and victim-involved crimes from 2020 to 2024. Victim-involved crimes are consistently higher than victimless crimes across all years. These crimes show slight fluctuations from 2020 to 2023 but exhibit a sharp decline starting mid-2024. Conversely, victimless crimes remain relatively stable across all years, averaging around 4,000 cases monthly with minimal variation. The data suggests a notable decrease in victim-involved crimes in 2024, likely driven by external interventions or policy changes, while victimless crimes maintain a steady pattern throughout.
+
+# Conclusion
+In Conclusion, from 2020 to 2024, Los Angeles saw notable shifts in crime patterns across various categories and regions, with key insights emerging from the data. Between 2020 and 2023, crime rates followed relatively stable seasonal trends, with peaks often occurring mid-year and gradual declines toward year-end. However, 2024 diverged significantly, with crime rates dropping sharply in April and stabilizing at much lower levels by mid-year, marking a substantial and unusual decline compared to previous years (Tables 1a–1e, Figure 1). This change suggests the influence of external factors such as policy interventions or broader societal shifts. The 2020 data also reflects the potential impact of the COVID-19 pandemic, which likely contributed to reduced crime rates during that period.
+
+Crime trends varied across regions, with the Valley Bureau recording the highest total crimes (286,724) but maintaining relatively stable rates over time, while the Central Bureau consistently showed the highest crime rates per capita. The West Bureau experienced the highest property crime rates, and the South Bureau faced a concerning balance between property and violent crimes, emphasizing regional disparities in crime dynamics (Table 2, Figure 2). Crime distribution by category revealed property crimes as the most prevalent type across all years, while violent crimes saw notable fluctuations before their dramatic decline in 2024. "Other" crimes remained stable, with only minor seasonal variations (Figures 3 and 4).
+
+The analysis of victim demographics revealed that young adults aged 20–39 were disproportionately affected, representing over 50% of total crime victims. Older adults and seniors faced lower victimization rates, with numbers decreasing significantly for those aged 80 and above (Table 3). In terms of descent, Hispanic/Latino/Mexican individuals accounted for the largest share of victims (39.77%), followed by White (25.26%) and Black (18.34%) victims, while smaller ethnic groups experienced notably fewer incidents (Table 4). The data also showed a near-equal distribution of victimization by sex, with males slightly more affected (50.33%) than females (48.26%), while the "Other" category accounted for 1.39% of victims (Table 5).
+
+Crime categories showed substantial reductions over the five-year period, particularly for violent crimes, where all major categories—aggravated assault, homicide, rape, robbery, and simple assault—declined by 66–80% (Table 7). Among property crimes, burglary saw the largest reduction (-66.31%), while motor vehicle theft and theft from vehicles also dropped notably. However, personal theft increased slightly by 12.9%, standing out as the only category to show growth during this period (Table 8). Victim-involved crimes remained significantly higher than victimless crimes through 2023 but exhibited a sharp decline in 2024, while victimless crimes remained stable, averaging around 4,000 incidents per month across all years (Figure 5).
+
+Overall, the data underscores significant progress in reducing crime in Los Angeles, particularly in 2024, when rates fell to historically low levels compared to simiar months between 2020 and 2023. However, the incomplete data for 2024 requires cautious interpretation, as the year is not yet over, and the full context of contributing factors remains unclear. Regional disparities and differences in crime types persist, with some areas and demographics facing disproportionate impacts. These findings emphasize the need for sustained and targeted interventions to address ongoing challenges and ensure equitable reductions in crime across all regions and populations.
+
+The observed trends in crime rates across Los Angeles from 2020 to 2024 can be attributed to various interrelated factors. Economic conditions play a significant role; the peak in crime during 2022 likely correlated with financial instability resulting from the COVID-19 pandemic, while the subsequent decline in 2024 may reflect economic recovery and improved employment opportunities. Additionally, community policing initiatives and enhanced law enforcement strategies aimed at fostering trust between police and residents may have effectively deterred criminal activity. The availability of social services, such as youth engagement programs and mental health support, can also mitigate factors contributing to crime, particularly in vulnerable populations. Furthermore, demographic shifts, particularly among Hispanic/Latino/Mexican communities, highlight the importance of addressing specific social dynamics that impact crime victimization. Overall, these complex factors underscore the necessity of targeted, data-driven approaches to crime prevention that address both the symptoms and root causes of crime in Los Angeles.
+
+#### Future Consderations 
+As crime trends in Los Angeles continue to evolve, several pertinent questions arise that warrant further exploration. One critical area is the impact of socioeconomic status on crime victimization and perpetration, particularly among different demographic groups. Investigating how factors such as income level, education, and employment status intersect with age, sex, and descent could yield valuable insights into the underlying causes of crime. Additionally, it would be worthwhile to examine the effectiveness of specific community policing strategies across diverse neighborhoods and how these initiatives influence crime rates and community trust in law enforcement.
+
+# References 
+- City of Los Angeles Neighborhoods Population & Race. Population and Race of Neighborhoods of the City of Los Angeles, California, www.laalmanac.com/population/po24la.php#google_vignette. 
+- Crime mapping and Compstat. LAPD Online. (August 29, 2024). https://www.lapdonline.org/office-of-the-chief-of-police/office-of-special-operations/detective-bureau/crime-mapping-and-compstat/  
+- Fagan, Jeffrey and MacDonald, John, Policing, Crime and Legitimacy in New York and Los Angeles: The Social and Political Contexts of Two Historic Crime Declines (August 21, 2012). Columbia Public Law Research Paper No. 12-315, Available at SSRN: https://ssrn.com/abstract=2133487 or http://dx.doi.org/10.2139/ssrn.2133487
+- Los Angeles Open Data Portal. (February 10, 2020). Crime Data from 2020 to Present. Los Angeles. https://data.lacity.org/Public-Safety/Crime-Data-from-2020-to-Present/2nrs-mtv8/about_data 
+

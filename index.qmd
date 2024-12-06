@@ -1,0 +1,519 @@
+---
+title: "PM 566 Final Project"
+---
+
+# An Exploration of Trends in Crime Rates Across Los Angeles (2020-2024)
+
+## Project Description 
+This project analyzes crime trends in Los Angeles from 2020 to 2024 using LAPD crime data and neighborhood population estimates. By exploring geographic crime distribution and demographic patterns of victims, it aims to understand shifts in crime rates across the city. The analysis examines changes in crime incidence, with a focus on trends related to victim age, sex, and descent, and investigates how these patterns reflect broader social and economic dynamics in LA's diverse communities.
+
+Primary Questions of Interest 
+<span style="color: #660099;"> *How have crime rates changed across different geographic areas in Los Angeles (LA) from 2020 to 2024, and what trends can be observed in terms of the age, sex, and descent of victims?* </span>
+
+[Download the report](https://github.com/almodaweb/PM566-FinalProject/blob/main/Final%20Report.html)
+
+## Results
+```{r setup, message=FALSE, echo=FALSE, warning=FALSE}
+# install packages
+library(data.table)
+library(dplyr)
+library(leaflet)
+library(tidyverse)
+library(ggplot2)
+library(viridis)
+library(RColorBrewer)
+library(knitr)
+library(lubridate)
+library(R.utils)
+library(kableExtra)
+library(forcats)
+library(stringr)
+library(rvest)
+library(sf)
+library(plotly)
+library(viridisLite)  
+```
+
+```{r, echo=FALSE}
+# Reading the dataset
+crimes <- read.csv("/Users/neens/Documents/GitHub/PM-566-Midterm/Data/Crime_Data_from_2020_to_Present_20241022.csv")
+```
+
+```{r, echo=FALSE, results = 'hide'}
+## Data Wrangling
+# Convert 'DATE.OCC' to a date-time object and extract the year, month, and day 
+crimes <- crimes %>%
+  mutate(
+    year = year(mdy_hms(DATE.OCC)),    # Extract the year
+    month = month(mdy_hms(DATE.OCC), label = TRUE, abbr = FALSE),  # Extract month as full name
+    day = day(mdy_hms(DATE.OCC))       # Extract the day of the month
+  )
+
+# Excluding partial month in 2024 (October) 
+crimes <- crimes %>%
+  filter(!(year == 2024 & month == "October"))  # Remove observations for October 2024
+
+# Define specific violent crime codes
+homicide <- c(110, 113) 
+rape <- c(121, 122, 815, 820, 821) 
+robbery <- c(210, 220)  
+aggravated_assault <- c(230, 231, 235, 236, 250, 251, 761, 926) 
+simple_assault <- c(435, 436, 437, 622, 623, 624, 625, 626, 627, 647, 763, 928, 930) 
+
+# Define specific property crime codes
+burglary <- c(310, 320)  
+motor_vehicle_theft <- c(510, 520, 433)  
+theft_from_vehicle <- c(330, 331, 410, 420, 421) 
+personal_theft <- c(350, 351, 352, 353, 450, 451, 452, 453)  
+other_theft<- c(341, 343, 345, 440, 441, 442, 443, 444, 445, 470, 471, 472, 473, 474, 475, 480, 485, 487, 491)  
+
+# Define crime categories
+violent_crimes <- c(homicide, rape, robbery, aggravated_assault, simple_assault)
+
+property_crimes <- c(burglary, motor_vehicle_theft, theft_from_vehicle, personal_theft, other_theft)
+
+# Create specific crime categories in the crimes data frame
+crimes <- crimes %>%
+  mutate(specific_crime_category = case_when(
+    Crm.Cd %in% homicide ~ "Homicide",
+    Crm.Cd %in% rape ~ "Rape",
+    Crm.Cd %in% robbery ~ "Robbery",
+    Crm.Cd %in% aggravated_assault ~ "Aggravated Assault",
+    Crm.Cd %in% simple_assault ~ "Simple Assault",
+    Crm.Cd %in% burglary ~ "Burglary",
+    Crm.Cd %in% motor_vehicle_theft ~ "Motor Vehicle Theft",
+    Crm.Cd %in% theft_from_vehicle~ "Theft from Vehicle",
+    Crm.Cd %in% personal_theft ~ "Personal Theft",
+    Crm.Cd %in% other_theft ~ "Other Theft",
+    TRUE ~ "Other"  # For any codes not classified above
+  ))
+
+# Create broader crime categories in the crimes data frame
+crimes <- crimes %>%
+  mutate(crime_category = case_when(
+    Crm.Cd %in% violent_crimes~ "Violent Crime",
+    Crm.Cd %in% property_crimes ~ "Property Crime",
+    TRUE ~ "Other"  # For any codes not classified above
+  ))
+
+# Renaming the Vict.Age variable to Victim_Age
+crimes <- crimes %>%
+  rename(Victim_Age = Vict.Age)
+
+# Creating age groups ** FIXED
+crimes <- crimes %>%
+  mutate(Age_Group = cut(Victim_Age, 
+                         breaks = seq(0, 100, by = 10), 
+                         labels = c("Children (0-9)", "Preteens (10-19)", 
+                                    "Young Adults (20-29)", "Adults (30-39)", 
+                                    "Middle-Aged Adults (40-49)", "Older Adults (50-59)", 
+                                    "Seniors (60-69)", "Elderly (70-79)", 
+                                    "Very Elderly (80-89)", "Centenarians (90-99)"),
+                         right = FALSE, 
+                         include.lowest = TRUE))
+
+# Create the new victim involvement variable
+crimes <- crimes %>%
+  mutate(victim_involvement = case_when(
+    Victim_Age == 0 ~ "No Victim Involved",
+    TRUE ~ "Victim Involved"  # For any age other than 0
+  ))
+
+# Rename and recode Vict.Sex
+crimes <- crimes %>%
+  rename(victim_sex = Vict.Sex) %>%
+  mutate(victim_sex = case_when(
+    victim_sex == "M" ~ "Male",
+    victim_sex == "F" ~ "Female",
+    victim_sex == "X" ~ "Other",
+    TRUE ~ "Unknown"  # For any unrecognized codes (no victim involved)
+  ))
+
+# Group areas into bureaus
+crimes <- crimes %>%
+  mutate(region = case_when(
+    AREA.NAME %in% c("Central", "Rampart", "Hollenbeck", "Northeast", "Newton") ~ "Central Bureau",
+    AREA.NAME %in% c("Hollywood", "Wilshire", "West LA", "Pacific", "Olympic") ~ "West Bureau",
+    AREA.NAME %in% c("Devonshire", "Foothill", "Mission", "N Hollywood", "Topanga", "Van Nuys", "West Valley") ~ "Valley Bureau",
+    AREA.NAME %in% c("77th Street", "Harbor", "Southeast", "Southwest") ~ "South Bureau",
+    TRUE ~ "Other"  # For any unrecognized areas
+  ))
+
+# Renaming the Vict.Descent variable to Victim Descent and clarifying its values
+crimes <- crimes %>%
+  rename(Victim_Descent = Vict.Descent) %>%
+  mutate(Victim_Descent = case_when(
+    Victim_Descent == "A" ~ "Other Asian",
+    Victim_Descent == "B" ~ "Black",
+    Victim_Descent == "C" ~ "Chinese",
+    Victim_Descent == "D" ~ "Cambodian",
+    Victim_Descent == "F" ~ "Filipino",
+    Victim_Descent == "G" ~ "Guamanian",
+    Victim_Descent == "H" ~ "Hispanic/Latino/Mexican",
+    Victim_Descent == "I" ~ "American Indian/Alaskan Native",
+    Victim_Descent == "J" ~ "Japanese",
+    Victim_Descent == "K" ~ "Korean",
+    Victim_Descent == "L" ~ "Laotian",
+    Victim_Descent == "O" ~ "Other",
+    Victim_Descent == "P" ~ "Pacific Islander",
+    Victim_Descent == "S" ~ "Samoan",
+    Victim_Descent == "U" ~ "Hawaiian",
+    Victim_Descent == "V" ~ "Vietnamese",
+    Victim_Descent == "W" ~ "White",
+    Victim_Descent == "X" ~ "Unknown",
+    Victim_Descent == "Z" ~ "Asian Indian",
+    TRUE ~ "Unspecified"  # For any unrecognized codes (no victim involved)
+  ))
+
+# Checking for data issues for numerical variables of interest
+summary(crimes$Victim_Age)
+summary(crimes$year)
+summary(crimes$month)
+
+# Excluding implausible ages 
+crimes <- crimes %>%
+  filter(Victim_Age >= 0 & Victim_Age <= 99)
+
+# Updated variables of interest
+variables_of_interest_updt <- c("AREA.NAME", "Crm.Cd", "year", "month", "day","crime_category", 
+                           "specific_crime_category", "victim_involvement", 
+                           "victim_sex", "Age_Group", "region", "Victim_Descent", 
+                           "Victim_Age")
+
+# Check for missing values among updated variables of interest 
+missing_values_updt <- sapply(crimes[variables_of_interest_updt], function(x) sum(is.na(x)))
+
+# Converting to a data frame 
+missing_values_updtdf <- data.frame(Variable = names(missing_values_updt), MissingValues = missing_values_updt)
+
+# Printing the results
+print(missing_values_updtdf)
+
+# Count occurrences of "No Victim Involved" ** PLOT COMPARING TO CRIMES W/ VICTIMS
+no_victim_count <- crimes %>%
+  filter(victim_involvement == "No Victim Involved") %>%
+  summarise(count = n())
+
+print(no_victim_count)
+
+# Clean dataset to keep only relevant variables
+crimes <- crimes %>%
+  select(AREA.NAME, Crm.Cd, year, month, day, crime_category, specific_crime_category, 
+         victim_involvement, victim_sex, Age_Group, region, Victim_Descent, 
+         Victim_Age)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, results="hide"}
+# Reading the population dataset
+# URL of the website
+url <- "https://www.laalmanac.com/population/po24la.php#google_vignette"
+
+# Read the HTML content of the webpage
+webpage <- read_html(url)
+
+# View the first few nodes to understand structure and confirm we have access to the table
+webpage %>% html_nodes("table") %>% html_table() %>% .[[1]]
+
+# Inspect the content of the page to understand where the table is
+webpage %>% html_nodes("table") %>% length()  
+
+population_table <- webpage %>%
+  html_nodes("table") %>%  # Look for all tables
+  .[[1]] %>%  # Choose the first table
+  html_table(fill = TRUE)  # Convert it to a data frame
+
+# Display the extracted table
+head(population_table)
+
+## Cleaning table
+# Keep only "Neighborhood" and "Total Population, All Races"
+population_table <- population_table %>%
+  select(Neighborhood, `Total Population, All Races`)
+
+# Removal of duplicates 
+population_table <- population_table %>%
+  # Remove rows where "Neighborhood" and "Total Population, All Races" are in the columns
+  filter(Neighborhood != "Neighborhood" & `Total Population, All Races` != "Total Population, All Races") %>%
+  
+  # Remove duplicate rows by keeping only the first occurrence of each neighborhood
+  distinct(Neighborhood, .keep_all = TRUE)  # Keep the first occurrence of each neighborhood
+
+# List of neighborhoods to keep
+neighborhoods_to_keep <- c("Central-Alameda", "Rampart Village", "Boyle Heights", 
+                           "Glassell Park", "Historic South Central", "Hollywood", 
+                           "Mid-City", "West LA", "Del Rey", "Pico-Union", 
+                           "Northridge", "Pacoima", "Mission Hills", "North Hollywood", 
+                           "Canoga Park", "Van Nuys", "Reseda", "Florence (LA)", 
+                           "Wilmington", "Broadway-Manchester", "Vermont Square")
+
+# Filter the table to only keep the rows with these neighborhoods
+population_table <- population_table %>%
+  filter(Neighborhood %in% neighborhoods_to_keep)
+
+# Rename the population column
+population_table <- population_table %>%
+  rename("Total population" = `Total Population, All Races`)
+
+# View the cleaned table
+head(population_table)
+
+# Create area variable
+population_table <- population_table %>%
+  mutate(area = case_when(
+    Neighborhood == "Central-Alameda" ~ "Central",
+    Neighborhood == "Rampart Village" ~ "Rampart",
+    Neighborhood == "Boyle Heights" ~ "Hollenbeck",
+    Neighborhood == "Glassell Park" ~ "Northeast",
+    Neighborhood == "Historic South Central" ~ "Newton",
+    Neighborhood == "Hollywood" ~ "Hollywood",
+    Neighborhood == "Mid-City" ~ "Wilshire",
+    Neighborhood == "West LA" ~ "West LA",
+    Neighborhood == "Del Rey" ~ "Pacific",
+    Neighborhood == "Pico-Union" ~ "Olympic",
+    Neighborhood == "Northridge" ~ "Devonshire",
+    Neighborhood == "Pacoima" ~ "Foothill",
+    Neighborhood == "Mission Hills" ~ "Mission",
+    Neighborhood == "North Hollywood" ~ "N Hollywood",
+    Neighborhood == "Canoga Park" ~ "Topanga",
+    Neighborhood == "Van Nuys" ~ "Van Nuys",
+    Neighborhood == "Reseda" ~ "West Valley",
+    Neighborhood == "Florence (LA)" ~ "77th Street",
+    Neighborhood == "Wilmington" ~ "Harbor",
+    Neighborhood == "Broadway-Manchester" ~ "Southeast",
+    Neighborhood == "Vermont Square" ~ "Southwest",
+    TRUE ~ NA_character_  # For any unmatched neighborhoods
+  ))
+
+## Merging datasets
+# Merging population_table into crimes using the area and AREA.NAME columns
+merged_data <- crimes %>%
+  left_join(population_table, by = c("AREA.NAME" = "area"))
+
+# View the merged dataset
+head(merged_data)
+```
+
+### **Figure 1. Trend of Crime Count in LA Over Time (2020-2024).**
+```{r, echo=FALSE, warning=FALSE}
+# Summarize total crimes per month by year and calculate percent change
+crime_rate_summary <- merged_data %>%
+  group_by(year, month) %>%
+  summarise(total_crimes = n(), .groups = 'drop') %>%
+  arrange(year, month) %>%
+  group_by(year) %>%
+  mutate(percent_change = (total_crimes - lag(total_crimes)) / lag(total_crimes) * 100)
+
+# Rename columns for clarity
+crime_rate_summary <- crime_rate_summary %>%
+  rename("Year" = year,
+         "Month" = month,
+         "Crime Count" = total_crimes,
+         "Percent Change (%)" = percent_change)
+
+# Create the ggplot
+ggplot_plot <- ggplot(crime_rate_summary, aes(x = factor(Month, levels = month.name), y = `Crime Count`, color = factor(Year), group = Year)) +
+  geom_line(size = 0.5) +  
+  geom_point(size = 1.5) +  
+  scale_color_viridis_d(option = "D") +  
+  labs(
+    title = "Monthly Crime Trends by Year (2020-2024)",  # Updated title
+    subtitle = "Total crimes reported per month, with percent change",
+    x = "Month", 
+    y = "Total Crimes",
+    color = "Year",
+    caption = "Data source: Los Angeles Open Data Portal"  # Added caption for the data source
+  ) +
+  theme_minimal(base_size = 14) +  
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for clarity
+    legend.position = "bottom",  
+    plot.title = element_text(size = 12),  
+    plot.subtitle = element_text(size = 12),  
+    axis.title = element_text(size = 12),  
+    axis.text = element_text(size = 12),  
+    plot.caption = element_text(size = 10)  
+  )
+
+# Convert ggplot to interactive plot using plotly
+interactive_plot1 <- ggplotly(ggplot_plot)
+
+# Display the interactive plot
+interactive_plot1
+```
+*Figure 1* illustrates monthly crime trends from 2020 to September 2024, highlighting both consistent patterns and significant anomalies. From 2020 to 2023, crime levels remained relatively stable, with predictable seasonal fluctuations throughout the year. However, 2024 stands out with a sharp and sustained decline in crime beginning in April and plateauing at significantly lower levels by June. This distinct deviation from prior years suggests the influence of an external factor or intervention that effectively reduced crime rates during 2024.
+
+### **Figure 2. Trends in Monthly Crime Rates per 100,000 Population by Region (2020-2024)**
+```{r, echo=FALSE, warning=FALSE}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(viridisLite)
+
+# Prepare Population Data
+crime_pop <- merged_data %>%
+  mutate(`Total population` = as.numeric(gsub(",", "", `Total population`))) %>%  # Clean and convert population column to numeric
+  distinct(region, AREA.NAME, .keep_all = TRUE) %>%  # Keep only one row per region-area combination
+  group_by(region) %>%
+  summarise(
+    total_population = sum(`Total population`, na.rm = TRUE),  # Sum population for each region
+    .groups = "drop"  # Remove grouping after summarizing
+  ) %>%
+  rename(
+    "Region" = region,
+    "Total Population" = total_population
+  )
+
+# Prepare Monthly Crime Data
+crime_monthly <- merged_data %>%
+  filter(year >= 2020 & year <= 2024) %>%  # Filter for crimes from 2020–2024
+  mutate(
+    month_year = paste(year, month, sep = "-")  # Create a combined Year-Month variable
+  ) %>%
+  group_by(region, month_year) %>%  # Group by region and month
+  summarise(
+    monthly_crimes = n(),  # Count crimes per region per month
+    .groups = "drop"  # Remove grouping after summarizing
+  ) %>%
+  rename(
+    "Region" = region,
+    "Month-Year" = month_year,
+    "Total Crimes" = monthly_crimes
+  )
+
+# Calculate Monthly Crime Rates per 100,000 Population
+crime_rate_monthly <- crime_monthly %>%
+  left_join(crime_pop, by = "Region") %>%  # Merge population data with monthly crime data
+  mutate(
+    crime_rate_per_100k = (`Total Crimes` / `Total Population`) * 100000  # Calculate monthly crime rate per 100,000
+  ) %>%
+  arrange(Region, `Month-Year`)  # Optional: Sort by region and month-year
+
+# Prepare the data by extracting month and year from the 'Month-Year' column
+crime_rate_monthly <- crime_rate_monthly %>%
+  mutate(
+    Year = sub("-.*", "", `Month-Year`),  # Extract year
+    Month = match(sub(".*-", "", `Month-Year`), month.name)  # Convert month name to numeric (1 for Jan, 12 for Dec)
+  ) %>%
+  arrange(Year, Month)  # Ensure the data is ordered by Year and Month
+
+# Create an interactive line plot for each year
+create_interactive_line_plot <- function(year_data, year) {
+  p <- plot_ly(
+    data = year_data,
+    x = ~Month,  # Use Month as x-axis (1, 2, ..., 12)
+    y = ~crime_rate_per_100k,
+    color = ~Region,  # Color by region
+    colors = viridisLite::viridis(length(unique(year_data$Region)), option = "D"),  # Apply viridis color scale
+    type = "scatter",
+    mode = "lines+markers",  # Line graph with markers at each data point
+    hoverinfo = "text",
+    text = ~paste(
+      "Region:", Region,
+      "<br>Month:", month.name[Month],  # Show month name in hover text
+      "<br>Crime Rate per 100k:", round(crime_rate_per_100k, 2)
+    )
+  ) %>%
+    layout(
+      title = paste("Monthly Crime Rates per 100,000 Population by Region in", year),
+      xaxis = list(
+        title = "Month",
+        tickvals = 1:12,  # Show months from 1 to 12
+        ticktext = month.name,  # Label months as Jan, Feb, Mar, ..., Dec
+        tickangle = 45  # Rotate labels for better visibility
+      ),
+      yaxis = list(
+        title = "Crime Rate per 100,000",
+        showgrid = TRUE,
+        zeroline = FALSE  # Remove the zero line for better visual clarity
+      ),
+      legend = list(
+        title = list(text = "Region"),
+        x = 0.85,  # Position the legend at the right
+        y = 0.95   # Position the legend at the top
+      ),
+      plot_bgcolor = "white",  # Set background color to white
+      paper_bgcolor = "white", # Set paper color to white for a cleaner look
+      margin = list(l = 40, r = 40, t = 50, b = 40)  # Adjust margins for clean presentation
+    )
+  
+  # Convert the plotly object into an interactive plot and display it
+  p
+}
+
+# Create and display interactive plots for each year (2020 to 2024)
+interactive_plots <- list()
+
+# Loop through each year (2020-2024) and create interactive line plots
+for (year in 2020:2024) {
+  year_data <- crime_rate_monthly %>% filter(Year == as.character(year))
+  
+  interactive_plots[[as.character(year)]] <- create_interactive_line_plot(year_data, year)
+}
+
+# Display the plots
+interactive_plots[[1]]  
+interactive_plots[[2]]  
+interactive_plots[[3]]  
+interactive_plots[[4]]  
+interactive_plots[[5]]  
+```
+
+### **Figure 3. Crime Rates per 100,000 Population by Region and Crime Category.**
+```{r, echo=FALSE, warning=FALSE}
+# Calculate Crime Rates per 100,000 Population
+crime_rate_100k <- merged_data %>%
+  mutate(
+    `Total population` = as.numeric(gsub(",", "", `Total population`))  # Clean and convert population column to numeric
+  ) %>%
+  group_by(region) %>%  # Group by region to calculate total crimes for each region
+  mutate(
+    total_crimes = n(),  # Count total crimes per region
+    crime_rate_per_100k = (total_crimes / `Total population`) * 100000  # Calculate crime rate per 100,000
+  ) %>%
+  ungroup() %>%  # Ungroup after calculations
+  arrange(region) 
+
+# Create the interactive plot for crime rates per 100k by crime category and region
+library(plotly)
+library(dplyr)
+
+# Create a grouped dataset by region and crime_category
+crime_rate_grouped <- crime_rate_100k %>%
+  group_by(region, crime_category) %>%
+  summarise(
+    total_crimes = n(),  # Calculate total crimes for each crime_category and region
+    `Total population` = first(`Total population`),  # Use the population of the region
+    crime_rate_per_100k = (total_crimes / `Total population`) * 100000,  # Calculate crime rate
+    .groups = "drop"
+  )
+
+# Create a ggplot object for interactive visualization
+ggplot_plot <- ggplot(crime_rate_grouped, aes(x = region, y = crime_rate_per_100k, fill = crime_category)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +  # Use dodge for separate bars by crime_category
+  labs(
+    title = "Crime Rate per 100,000 by Region and Crime Category",
+    subtitle = "Comparison of crime rates across different regions and categories",
+    x = "Region",
+    y = "Crime Rate per 100,000",
+    fill = "Crime Category"
+  ) +
+  scale_fill_viridis_d(option = "D") + 
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for clarity
+    legend.position = "bottom",  # Place legend at the bottom
+    plot.title = element_text(size = 12), 
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  ) +
+  scale_y_continuous(labels = scales::comma)  # Format y-axis labels
+
+# Convert the ggplot object to an interactive Plotly object
+interactive_plot <- ggplotly(ggplot_plot)
+
+# Display the interactive plot
+interactive_plot
+```
+*Figure 3* shows the distribution of Property Crime, Violent Crime, and Other Crimes across four regions in Los Angeles per 100,000 population as normalized crime rates. The West Bureau stands out with the highest rate of Property Crime, exceeding 400,000, while its Violent Crime rate is also significant but slightly lower. In the South Bureau, Violent Crime is relatively high and nearly matches its Property Crime rate, emphasizing a concerning balance between these two categories. The Central Bureau displays a more even distribution among the three crime categories, with Property Crime being slightly more dominant. Meanwhile, the Valley Bureau reports the lowest overall crime rates, with Property Crime slightly exceeding Violent Crime and Other categories. Overall, the data underscores significant regional differences in crime patterns, with Property Crime being the most prevalent type across most regions.
